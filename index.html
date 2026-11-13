@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booklet Maker</title>
+<style>
+  :root {
+    --bg: #f7f5f0; --card: #fff; --ink: #222; --muted: #666; --line: #ddd8cc;
+    --accent: #3d5a80; --ok: #2e7d4f; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1b1d; --card: #252528; --ink: #eee; --muted: #aaa; --line: #3a3a3e;
+      --accent: #8fb3e0; --ok: #6cc28f; --err: #f28b82;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.55 Georgia, "Times New Roman", serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  #drop {
+    display: block; border: 2px dashed var(--line); border-radius: 14px; background: var(--card);
+    padding: 44px 20px; text-align: center; cursor: pointer; transition: border-color .15s;
+  }
+  #drop.over, #drop:hover { border-color: var(--accent); }
+  #drop strong { font-size: 1.2rem; display: block; margin-bottom: 4px; }
+  #drop span { color: var(--muted); }
+  input[type=file] { display: none; }
+  #status { margin: 20px 0 0; min-height: 1.5em; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+  #download {
+    display: none; margin-top: 14px; padding: 14px 22px; border-radius: 10px; border: 0;
+    background: var(--accent); color: var(--bg); font: inherit; font-weight: bold;
+    text-decoration: none; text-align: center;
+  }
+  section {
+    margin-top: 36px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 6px 22px 14px;
+  }
+  h2 { font-size: 1.15rem; margin: 18px 0 6px; }
+  ol { padding-left: 1.3em; margin: 6px 0; }
+  li { margin: 4px 0; }
+  .note { color: var(--muted); font-size: .92rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Booklet Maker</h1>
+  <p class="sub">Turn a liturgy PDF into pages you can print, fold, and staple.</p>
+
+  <label id="drop" for="file">
+    <strong>Drop your PDF here</strong>
+    <span>or click to choose a file</span>
+  </label>
+  <input id="file" type="file" accept="application/pdf,.pdf">
+
+  <p id="status"></p>
+  <a id="download">Download print-ready booklet</a>
+
+  <section>
+    <h2>What your PDF should look like</h2>
+    <ol>
+      <li>Landscape (sideways) pages.</li>
+      <li>Two columns per page. Each column becomes one booklet page.</li>
+      <li>In reading order: the left column of page 1 is the front cover.</li>
+      <li>An <b>even</b> number of pages.</li>
+    </ol>
+
+    <h2>How to print</h2>
+    <ol>
+      <li>Open the downloaded file. Print settings: <b>landscape</b>,
+        <b>100% / actual size</b> (not “fit to page”).</li>
+      <li>If your printer prints double-sided, choose <b>flip on short edge</b> and print
+        everything. You’re done — skip to folding.</li>
+      <li>Otherwise, print <b>odd pages only</b> (1, 3, 5…).</li>
+      <li>Take the stack out. Without flipping it over, <b>turn it end-over-end</b>
+        (rotate 180°, so the top edge is now at the bottom) and put it back in the tray.</li>
+      <li>Print <b>even pages only</b> (2, 4, 6…).</li>
+    </ol>
+
+    <h2>Fold and staple</h2>
+    <ol>
+      <li>Keep the sheets in the order they came out.</li>
+      <li>Fold the whole stack in half, then staple on the fold.</li>
+    </ol>
+    <p class="note">Tip: print one copy first to check the pages come out in order.
+      Your file never leaves your computer — all the work happens in your browser.</p>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+const drop = document.getElementById('drop');
+const input = document.getElementById('file');
+const status = document.getElementById('status');
+const dl = document.getElementById('download');
+
+function say(msg, kind) { status.textContent = msg; status.className = kind || ''; }
+
+['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.add('over');
+}));
+['dragleave', 'drop'].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.remove('over');
+}));
+drop.addEventListener('drop', ev => {
+  if (ev.dataTransfer.files[0]) run(ev.dataTransfer.files[0]);
+});
+input.addEventListener('change', () => {
+  if (input.files[0]) run(input.files[0]);
+  input.value = '';
+});
+
+async function run(file) {
+  dl.style.display = 'none';
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+    return say('That isn’t a PDF. Please choose a .pdf file.', 'err');
+  }
+  say('Working…');
+  try {
+    const { PDFDocument } = PDFLib;
+    const src = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+    const pages = src.getPages();
+    const n = pages.length * 2; // two panels per landscape page
+    if (pages.length % 2) {
+      return say(`Your PDF has ${pages.length} pages. It needs an even number — add or remove ` +
+        'a page (a blank one is fine) and try again.', 'err');
+    }
+    const { width: W, height: H } = pages[0].getSize();
+    if (H > W) {
+      return say('Your PDF pages are portrait (tall). This needs landscape pages with two ' +
+        'columns each.', 'err');
+    }
+    const half = W / 2;
+
+    // Saddle-fold order: front hi|lo, back lo+1|hi-1, working inward.
+    const order = [];
+    for (let s = 0; s < n / 4; s++) {
+      const lo = 1 + 2 * s, hi = n - 2 * s;
+      order.push([hi, lo], [lo + 1, hi - 1]);
+    }
+
+    const out = await PDFDocument.create();
+    const cache = {};
+    async function panel(pn) {
+      if (!cache[pn]) {
+        const left = pn % 2 === 1;
+        const box = { left: left ? 0 : half, right: left ? half : W, bottom: 0, top: H };
+        [cache[pn]] = await out.embedPages([pages[(pn - 1) >> 1]], [box]);
+      }
+      return cache[pn];
+    }
+    for (const [L, R] of order) {
+      const pg = out.addPage([W, H]);
+      pg.drawPage(await panel(L), { x: 0, y: 0, width: half, height: H });
+      pg.drawPage(await panel(R), { x: half, y: 0, width: half, height: H });
+    }
+
+    const bytes = await out.save();
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    dl.href = url;
+    dl.download = file.name.replace(/\.pdf$/i, '') + ' - PRINT.pdf';
+    dl.style.display = 'inline-block';
+    say(`Done — ${n}-page booklet on ${order.length / 2} sheets of paper.`, 'ok');
+  } catch (e) {
+    console.error(e);
+    say('Sorry, that PDF couldn’t be read. Try exporting it again as a PDF.', 'err');
+  }
+}
+</script>
+</body>
+</html>
